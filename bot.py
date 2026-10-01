@@ -35,6 +35,31 @@ def resolver_gemini(texto=None, imagen_bytes=None):
         return "\n\n--- SOLUCIÓN GEMINI (incluye OCR) ---\n" + r.json()['candidates'][0]['content']['parts'][0]['text']
     except Exception as e: return f"\n[Gemini error: {e}]"
 
+# --- NUEVO: FUNCION PARA ESCUCHAR TU WHATSAPP ---
+def revisar_si_me_escribiste(pendientes_actuales):
+    try:
+        url_get = f"https://7107.api.greenapi.com/waInstance{ID_INSTANCE}/getNotification/{TOKEN}"
+        r = requests.get(url_get, timeout=20).json()
+        if not r or 'body' not in r:
+            return
+        body = r['body']
+        if body.get('typeWebhook') == 'incomingMessageReceived':
+            # texto que me escribiste
+            txt = body.get('messageData', {}).get('textMessageData', {}).get('textMessage','').lower()
+            if any(k in txt for k in ['que me falta', 'que falta', 'pendientes', 'tareas', 'resumen', 'ayuda']):
+                if not pendientes_actuales:
+                    enviar(f"✅ A las {datetime.now(PERU_TZ).strftime('%H:%M')} no tienes pendientes activos. Todo al día.")
+                else:
+                    lista = "\n".join(pendientes_actuales[:15])
+                    enviar(f"📋 Me preguntaste a las {datetime.now(PERU_TZ).strftime('%H:%M')} - Tienes {len(pendientes_actuales)} pendientes:\n\n{lista}")
+
+        # borrar notificacion para no repetir
+        receiptId = r.get('receiptId')
+        if receiptId:
+            requests.delete(f"https://7107.api.greenapi.com/waInstance{ID_INSTANCE}/deleteNotification/{TOKEN}/{receiptId}", timeout=20)
+    except Exception as e:
+        print(f"Error escuchando WA: {e}")
+
 # Login CIMAC
 s = requests.Session()
 soup = BeautifulSoup(s.get("https://campus.cimac.jedu.pe/login/index.php", timeout=20).text, 'html.parser')
@@ -48,7 +73,7 @@ page = s.get("https://campus.cimac.jedu.pe/my/", timeout=25)
 soup = BeautifulSoup(page.text, 'html.parser')
 
 ahora_peru = datetime.now(PERU_TZ)
-es_hora_resumen = ahora_peru.hour == 15 and ahora_peru.minute < 30 # 15:00-15:29 am Lima
+es_hora_resumen = ahora_peru.hour == 15 and ahora_peru.minute < 30 # 3:00-3:29 pm Lima
 
 pendientes = []
 nuevos = 0
@@ -59,24 +84,19 @@ for a in soup.find_all('a', href=True):
     if len(texto) < 4 or not href.startswith('http'): continue
     if not any(x in href for x in ['/mod/', '.pdf','.docx','.doc','.xlsx','.xls','.jpg','.jpeg','.png']): continue
     if href in vistos_hrefs:
-        # guardar para resumen
         if 'assign' in href: pendientes.append(f"📝 {texto} - {href}")
         continue
 
     tipo = "📄 ARCHIVO" if any(x in href.lower() for x in ['.pdf','.docx','.xlsx','.jpg','.png']) else "📝 TAREA" if 'assign' in href else "📌 ACTIVIDAD"
     msg = f"{tipo} NUEVO EN CIMAC\n\n{texto}\n{href}"
 
-    # Descargar y resolver
     try:
         fr = s.get(href, timeout=30)
         if len(fr.content) > 1000:
             if '.pdf' in href.lower() or 'pdf' in fr.headers.get('content-type',''):
                 pdf=PyPDF2.PdfReader(io.BytesIO(fr.content))
                 txt="\n".join([(p.extract_text() or "") for p in pdf.pages[:6]])
-                if len(txt.strip()) < 50: # Es escaneado -> OCR con Gemini Vision
-                    msg += resolver_gemini(imagen_bytes=fr.content[:2000000]) # pdf no va como imagen, pero intentamos texto
-                else:
-                    msg += resolver_gemini(texto=txt)
+                msg += resolver_gemini(texto=txt, imagen_bytes=None if len(txt.strip())>50 else fr.content[:2000000])
             elif any(x in href.lower() for x in ['.jpg','.jpeg','.png']):
                 msg += resolver_gemini(imagen_bytes=fr.content)
             elif '.docx' in href.lower():
@@ -92,13 +112,21 @@ for a in soup.find_all('a', href=True):
     pendientes.append(f"{tipo} {texto}")
     if nuevos >= 3: break
 
-# 2. RESUMEN DIARIO 8AM
+# --- NUEVO 1: ALERTA VENCIMIENTO 8AM y 8PM ---
+if ahora_peru.hour in [8, 20] and ahora_peru.minute < 30:
+    if pendientes:
+        enviar(f"⏰ RECORDATORIO {'8AM' if ahora_peru.hour==8 else '8PM'} - Tienes {len(pendientes)} pendientes que pueden vencer pronto:\n\n" + "\n".join(pendientes[:10]))
+
+# --- NUEVO 2: SI TÚ LE ESCRIBES, TE RESPONDE ---
+revisar_si_me_escribiste(pendientes)
+
+# RESUMEN DIARIO 3PM (como lo querias)
 if es_hora_resumen:
     if pendientes:
-        resumen = f"☀️ RESUMEN 8AM CIMAC - {ahora_peru.strftime('%d/%m')}\n\nTienes {len(pendientes)} pendientes activos:\n\n" + "\n".join(pendientes[:15])
-        resumen += "\n\nEstoy vigilando todo el día cada 30 min."
+        resumen = f"☀️ RESUMEN 3PM CIMAC - {ahora_peru.strftime('%d/%m')}\n\nTienes {len(pendientes)} pendientes activos:\n\n" + "\n".join(pendientes[:15])
+        resumen += "\n\nEstoy vigilando todo el día cada 30 min. Escríbeme 'que me falta?' cuando quieras."
     else:
-        resumen = f"☀️ RESUMEN 8AM CIMAC - {ahora_peru.strftime('%d/%m')}\n\nNo tienes tareas pendientes nuevas. Todo al día ✅"
+        resumen = f"☀️ RESUMEN 3PM CIMAC - {ahora_peru.strftime('%d/%m')}\n\nNo tienes tareas pendientes nuevas. Todo al día ✅"
     enviar(resumen)
     print("Resumen enviado")
 
