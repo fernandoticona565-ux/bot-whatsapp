@@ -35,28 +35,37 @@ def resolver_gemini(texto=None, imagen_bytes=None):
         return "\n\n--- SOLUCIÓN GEMINI (incluye OCR) ---\n" + r.json()['candidates'][0]['content']['parts'][0]['text']
     except Exception as e: return f"\n[Gemini error: {e}]"
 
-# --- NUEVO: FUNCION PARA ESCUCHAR TU WHATSAPP ---
+# --- FUNCION PARA ESCUCHAR TU WHATSAPP ---
 def revisar_si_me_escribiste(pendientes_actuales):
     try:
-        url_get = f"https://7107.api.greenapi.com/waInstance{ID_INSTANCE}/getNotification/{TOKEN}"
-        r = requests.get(url_get, timeout=20).json()
+        if not ID_INSTANCE or not TOKEN:
+            return
+        base = ID_INSTANCE[:4]
+        url_get = f"https://{base}.api.greenapi.com/waInstance{ID_INSTANCE}/receiveNotification/{TOKEN}"
+        resp = requests.get(url_get, timeout=20)
+        
+        if not resp.text.strip():
+            return
+            
+        r = resp.json()
         if not r or 'body' not in r:
             return
+
         body = r['body']
         if body.get('typeWebhook') == 'incomingMessageReceived':
-            # texto que me escribiste
             txt = body.get('messageData', {}).get('textMessageData', {}).get('textMessage','').lower()
             if any(k in txt for k in ['que me falta', 'que falta', 'pendientes', 'tareas', 'resumen', 'ayuda']):
                 if not pendientes_actuales:
                     enviar(f"✅ A las {datetime.now(PERU_TZ).strftime('%H:%M')} no tienes pendientes activos. Todo al día.")
                 else:
                     lista = "\n".join(pendientes_actuales[:15])
-                    enviar(f"📋 Me preguntaste a las {datetime.now(PERU_TZ).strftime('%H:%M')} - Tienes {len(pendientes_actuales)} pendientes:\n\n{lista}")
+                    enviar(f"📋 Me preguntaste a las {datetime.now(PERU_TZ).strftime('%H:%M')} - Tienes {len(pendientes_actuales)} pendientes:\n{lista}")
 
         # borrar notificacion para no repetir
         receiptId = r.get('receiptId')
         if receiptId:
-            requests.delete(f"https://7107.api.greenapi.com/waInstance{ID_INSTANCE}/deleteNotification/{TOKEN}/{receiptId}", timeout=20)
+            requests.delete(f"https://{base}.api.greenapi.com/waInstance{ID_INSTANCE}/deleteNotification/{TOKEN}/{receiptId}", timeout=20)
+
     except Exception as e:
         print(f"Error escuchando WA: {e}")
 
