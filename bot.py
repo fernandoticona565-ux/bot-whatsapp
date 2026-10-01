@@ -33,8 +33,9 @@ try:
         mensaje = f"📚 Hola Fernando! Revisé TODA tu plataforma CIMAC y detecté tareas pendientes.\n\nEntra ahora a revisar: https://campus.cimac.jedu.pe/my/\n\nSi es tarea, mándame foto aquí a tu WhatsApp 921493279 y te la resuelvo al toque."
         enviar_whatsapp(mensaje)
         print("Tareas detectadas en varios cursos, mensaje enviado")
-    else:
+   else:
         print("Revisé todos los cursos, sin pendientes urgentes")
-        
+        enviar_whatsapp("✅ PRUEBA: Tu bot CIMAC ya está vivo 24/7, Fernando. Esto es una prueba forzada. Si ves esto, ya funciona.")
+
 except Exception as e:
     print(f"Error: {e}")
