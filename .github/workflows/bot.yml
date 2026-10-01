@@ -16,5 +16,6 @@ jobs:
         env:
           CIMAC_USER: ${{ secrets.CIMAC_USER }}
           CIMAC_PASS: ${{ secrets.CIMAC_PASS }}
+          ID_INSTANCE: ${{ secrets.ID_INSTANCE }}
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
