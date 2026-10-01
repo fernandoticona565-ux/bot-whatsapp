@@ -8,13 +8,13 @@ USER = os.getenv("CIMAC_USER")
 PASS = os.getenv("CIMAC_PASS")
 TOKEN = os.getenv("GREEN_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-ID_INSTANCE = "710722753429"
+ID_INSTANCE = os.getenv("ID_INSTANCE")
 MI_NUMERO = "51921493279@c.us"
 SEEN_FILE = "vistos.json"
 PERU_TZ = pytz.timezone('America/Lima')
 
 def enviar(msg):
-    url = f"https://7107.api.greenapi.com/waInstance{ID_INSTANCE}/sendMessage/{TOKEN}"
+    url = f"https://{ID_INSTANCE[:4]}.api.greenapi.com/waInstance{ID_INSTANCE}/sendMessage/{TOKEN}"
     for i in range(0, len(msg), 3500):
         try: requests.post(url, json={"chatId": MI_NUMERO, "message": msg[i:i+3500]}, timeout=30)
         except: pass
