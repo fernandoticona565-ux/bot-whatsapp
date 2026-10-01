@@ -1,30 +1,29 @@
-import os, re, requests
+import os, requests
 from bs4 import BeautifulSoup
 
 USER = os.getenv("CIMAC_USER")
 PASS = os.getenv("CIMAC_PASS")
 TOKEN = os.getenv("GREEN_TOKEN")
-ID_INSTANCE = "7107227534"
+ID_INSTANCE = "710722753429"
 MI_NUMERO = "51921493279@c.us"
 
 def enviar_whatsapp(msg):
-    url = f"https://7107.api.green-api.com/waInstance{ID_INSTANCE}/sendMessage/{TOKEN}"
+    url = f"https://7107.api.greenapi.com/waInstance{ID_INSTANCE}/sendMessage/{TOKEN}"
     requests.post(url, json={"chatId": MI_NUMERO, "message": msg}, timeout=20)
 
 try:
     s = requests.Session()
     r = s.get("https://campus.cimac.jedu.pe/login/index.php", timeout=20)
     soup = BeautifulSoup(r.text, 'html.parser')
-    token_input = soup.find('input', {'name': 'logintoken'})
-    logintoken = token_input['value'] if token_input else ""
+    t = soup.find('input', {'name': 'logintoken'})
+    logintoken = t['value'] if t else ""
     s.post("https://campus.cimac.jedu.pe/login/index.php", data={"username": USER, "password": PASS, "logintoken": logintoken}, timeout=20)
     r = s.get("https://campus.cimac.jedu.pe/my/", timeout=20)
     texto = BeautifulSoup(r.text, 'html.parser').get_text().lower()
     if any(p in texto for p in ["tarea para entregar", "fecha límite", "pendiente", "por entregar", "vence"]):
-        enviar_whatsapp("📚 Hola Fernando! Revisé TODA tu plataforma CIMAC y detecté tareas pendientes. Entra ahora: https://campus.cimac.jedu.pe/my/")
-        print("Tareas detectadas")
+        enviar_whatsapp("📚 CIMAC: Fernando, tarea pendiente detectada en todos tus cursos! https://campus.cimac.jedu.pe/my/")
     else:
-        print("Revisé todos los cursos, sin pendientes urgentes")
-        enviar_whatsapp("✅ PRUEBA: Tu bot CIMAC ya está vivo 24/7, Fernando. Si ves esto, ya funciona.")
+        print("Sin pendientes")
+        enviar_whatsapp("✅ PRUEBA FINAL: Fernando, tu bot CIMAC 24/7 YA FUNCIONA. Este es el mensaje de prueba.")
 except Exception as e:
     print(f"Error: {e}")
