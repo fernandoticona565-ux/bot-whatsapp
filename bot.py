@@ -48,7 +48,7 @@ page = s.get("https://campus.cimac.jedu.pe/my/", timeout=25)
 soup = BeautifulSoup(page.text, 'html.parser')
 
 ahora_peru = datetime.now(PERU_TZ)
-es_hora_resumen = ahora_peru.hour == 8 and ahora_peru.minute < 30 # 8:00-8:29 am Lima
+es_hora_resumen = ahora_peru.hour == 15 and ahora_peru.minute < 30 # 15:00-15:29 am Lima
 
 pendientes = []
 nuevos = 0
