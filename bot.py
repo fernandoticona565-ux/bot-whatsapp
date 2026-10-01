@@ -20,10 +20,12 @@ try:
     s.post("https://campus.cimac.jedu.pe/login/index.php", data={"username": USER, "password": PASS, "logintoken": logintoken}, timeout=20)
     r = s.get("https://campus.cimac.jedu.pe/my/", timeout=20)
     texto = BeautifulSoup(r.text, 'html.parser').get_text().lower()
-    if any(p in texto for p in ["tarea para entregar", "fecha límite", "pendiente", "por entregar", "vence"]):
-        enviar_whatsapp("📚 CIMAC: Fernando, tarea pendiente detectada en todos tus cursos! https://campus.cimac.jedu.pe/my/")
+
+    if any(p in texto for p in ["tarea para entregar", "fecha límite", "pendiente", "por entregar", "vence", "quiz", "cuestionario"]):
+        enviar_whatsapp(f"📚 ALERTA CIMAC: Hola Fernando! Detecté una tarea/examen pendiente en tu plataforma. Entra ya a entregarla: https://campus.cimac.jedu.pe/my/")
+        print("Tarea encontrada y notificada")
     else:
-        print("Sin pendientes")
-        enviar_whatsapp("✅ PRUEBA FINAL: Fernando, tu bot CIMAC 24/7 YA FUNCIONA. Este es el mensaje de prueba.")
+        print("Todo revisado, sin pendientes")
+
 except Exception as e:
     print(f"Error: {e}")
