@@ -1,132 +1,117 @@
 import os, requests, re, io
 from bs4 import BeautifulSoup
-from datetime import datetime
-import pytz
-import fitz  # PyMuPDF
-import google.generativeai as genai
+import fitz, google.generativeai as genai
 
-USER = os.getenv("CIMAC_USER")
-PASS = os.getenv("CIMAC_PASS")
-TOKEN = os.getenv("GREEN_TOKEN")
-ID_INSTANCE = os.getenv("ID_INSTANCE")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-MI_NUMERO = "51921493279@c.us"
-PERU_TZ = pytz.timezone('America/Lima')
+USER=os.getenv("CIMAC_USER"); PASS=os.getenv("CIMAC_PASS")
+TOKEN=os.getenv("GREEN_TOKEN"); ID=os.getenv("ID_INSTANCE")
+GEMINI=os.getenv("GEMINI_API_KEY")
+CURSO_Q=os.getenv("CURSO_BUSCAR","tic").lower()
+SECCION_Q=os.getenv("SECCION_BUSCAR","tareas").lower()
+MI="51921493279@c.us"
 
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+# TU MAPA EXACTO SEGUN TUS FOTOS
+MAPA = {
+    "base": "base de datos",
+    "datos": "base de datos",
+    "sql": "base de datos",
+    "web": "entornos web",
+    "html": "entornos web",
+    "hab": "habilidades",
+    "actitudes": "habilidades",
+    "diseno": "diseño grafico",
+    "diseño": "diseño grafico",
+    "illustrator": "diseño grafico",
+    "progra": "fundamentos de programación",
+    "algoritmia": "fundamentos de programación",
+    "ingles": "idiomas",
+    "idioma": "idiomas",
+    "soporte": "organización y administración",
+    "admin": "organización y administración",
+    "tic": "tecnologias de la informacion",
+    "excel": "tecnologias de la informacion",
+    "3383": "tecnologias"
+}
+for k,v in MAPA.items():
+    if k in CURSO_Q: CURSO_Q=v; break
 
-def enviar(msg):
-    url = f"https://api.greenapi.com/waInstance{ID_INSTANCE}/sendMessage/{TOKEN}"
+genai.configure(api_key=GEMINI)
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+def wa(msg):
+    url=f"https://api.greenapi.com/waInstance{ID}/sendMessage/{TOKEN}"
+    for i in range(0,len(msg),3500):
+        requests.post(url, json={"chatId":MI,"message":msg[i:i+3500]}, timeout=25)
+
+s=requests.Session()
+s.headers.update({"User-Agent":"Mozilla/5.0"})
+lp=s.get("https://campus.cimac.jedu.pe/login/index.php",timeout=30)
+soup=BeautifulSoup(lp.text,'html.parser')
+lt=soup.find('input',{'name':'logintoken'})
+data={"username":USER,"password":PASS}
+if lt: data["logintoken"]=lt['value']
+s.post("https://campus.cimac.jedu.pe/login/index.php",data=data,timeout=30)
+
+# SACAR TUS 8 CURSOS
+cursos={}
+for u in ["https://campus.cimac.jedu.pe/my/","https://campus.cimac.jedu.pe/my/courses.php"]:
     try:
-        for i in range(0, len(msg), 3800):
-            requests.post(url, json={"chatId": MI_NUMERO, "message": msg[i:i+3800]}, timeout=30)
-    except Exception as e: print(f"Error WA {e}")
-
-s = requests.Session()
-s.headers.update({"User-Agent": "Mozilla/5.0"})
-
-# LOGIN
-lp = s.get("https://campus.cimac.jedu.pe/login/index.php", timeout=30)
-soup = BeautifulSoup(lp.text, 'html.parser')
-lt = soup.find('input', {'name': 'logintoken'})
-data = {"username": USER, "password": PASS}
-if lt: data["logintoken"] = lt['value']
-s.post("https://campus.cimac.jedu.pe/login/index.php", data=data, timeout=30)
-
-ahora = datetime.now(PERU_TZ)
-cursos_links = []
-tareas_por_resolver = []
-
-# 1. BUSCA TODOS LOS CURSOS (sin limite)
-for url_list in ["https://campus.cimac.jedu.pe/my/", "https://campus.cimac.jedu.pe/my/courses.php"]:
-    try:
-        html = s.get(url_list, timeout=25).text
-        found = re.findall(r'https://campus\.cimac\.jedu\.pe/course/view\.php\?id=\d+', html)
-        cursos_links.extend(found)
+        html=s.get(u,timeout=25).text
+        for cid in set(re.findall(r'course/view\.php\?id=(\d+)',html)):
+            if cid not in cursos:
+                try:
+                    ch=s.get(f"https://campus.cimac.jedu.pe/course/view.php?id={cid}",timeout=15).text
+                    name=BeautifulSoup(ch,'html.parser').title.get_text(strip=True) if BeautifulSoup(ch,'html.parser').title else cid
+                    cursos[cid]={"id":cid,"url":f"https://campus.cimac.jedu.pe/course/view.php?id={cid}","name":name,"html":ch}
+                except: pass
     except: pass
-cursos_links = list(set(cursos_links))
-print(f"TOTAL CURSOS: {len(cursos_links)}")
 
-# 2. ENTRA A CADA CURSO Y SACA TODAS LAS TAREAS
-for curso_url in cursos_links:
-    try:
-        c_html = s.get(curso_url, timeout=25).text
-        curso_nombre = re.search(r'<title>(.*?)</title>', c_html)
-        curso_nombre = curso_nombre.group(1)[:40] if curso_nombre else curso_url
-        tareas_urls = list(set(re.findall(r'https://campus\.cimac\.jedu\.pe/mod/assign/view\.php\?id=\d+', c_html)))
-        
-        for t_url in tareas_urls:
-            t_html = s.get(t_url, timeout=20).text
-            t_soup = BeautifulSoup(t_html, 'html.parser')
-            titulo = (t_soup.find('h2').get_text(strip=True) if t_soup.find('h2') else "Tarea")
-            texto = t_soup.get_text(" ", strip=True).lower()
-            
-            # Si te falta entregar
-            if "no entregado" in texto or "sin entrega" in texto:
-                # Busca PDFs / links de la tarea
-                pdf_link = None
-                for a in t_soup.find_all('a', href=True):
-                    if ".pdf" in a['href'] or "forcedownload=1" in a['href']:
-                        pdf_link = a['href']
-                        break
-                tareas_por_resolver.append({
-                    "curso": curso_nombre,
-                    "titulo": titulo,
-                    "url": t_url,
-                    "pdf": pdf_link,
-                    "html": t_html
-                })
-    except Exception as e: print(e)
+# FILTRAR POR LO QUE ESCRIBISTE
+filtrados=[c for c in cursos.values() if CURSO_Q in c['name'].lower()]
+if SECCION_Q=="todo": filtrados=list(cursos.values())
+if not filtrados: filtrados=list(cursos.values())[:1]
 
-print(f"Tareas pendientes en TODOS los cursos: {len(tareas_por_resolver)}")
+wa(f"🔍 Buscando: {CURSO_Q.upper()} / {SECCION_Q.upper()}\nCursos encontrados: {len(filtrados)}")
 
-# 3. GEMINI RESUELVE CADA UNA
-es_ventana = True  # luego cambialo a ahora.hour == 8
+for curso in filtrados:
+    soup=BeautifulSoup(curso['html'],'html.parser')
+    # Detecta secciones
+    target=[]
+    for li in soup.find_all('li', id=re.compile(r'section-')):
+        if SECCION_Q in li.get_text(" ").lower() or SECCION_Q=="todo" or SECCION_Q in ["tareas","recursos","practica","silabo"]:
+            # Si pide tareas busca assign, si pide recursos busca resource
+            if "tarea" in SECCION_Q:
+                for a in li.find_all('a', href=True):
+                    if 'assign' in a['href']: target.append(a['href'])
+            else:
+                for a in li.find_all('a', href=True):
+                    if 'resource' in a['href'] or 'folder' in a['href'] or 'assign' in a['href']: target.append(a['href'])
 
-if es_ventana and tareas_por_resolver:
-    for tarea in tareas_por_resolver[:5]: # resuelve 5 por vez para no saturar
-        prompt = ""
-        contenido = ""
-        
-        # Lee PDF si hay
-        if tarea["pdf"]:
-            try:
-                pdf_url = tarea["pdf"]
-                if not pdf_url.startswith("http"):
-                    pdf_url = "https://campus.cimac.jedu.pe" + pdf_url
-                pdf_data = s.get(pdf_url, timeout=30).content
-                doc = fitz.open(stream=pdf_data, filetype="pdf")
-                for page in doc:
-                    contenido += page.get_text()
-            except Exception as e:
-                print(f"Error PDF {e}")
-        
-        # Si no hay PDF, usa el texto de la pagina
-        if not contenido:
-            soup_t = BeautifulSoup(tarea["html"], 'html.parser')
-            contenido = soup_t.get_text(" ", strip=True)[:8000]
+    target=list(set(target))[:6]
+    if not target:
+        wa(f"⚠️ {curso['name'][:50]}\nNo encontre '{SECCION_Q}'. Pero tiene {len(soup.find_all('a'))} archivos.")
+        continue
 
-        prompt = f"""Eres asistente de CIMAC. Resuelve esta tarea:
-        Curso: {tarea['curso']}
-        Tarea: {tarea['titulo']}
-        Instrucciones: {contenido[:6000]}
-        
-        Dame:
-        1. Resumen de que pide
-        2. Resolucion lista para copiar
-        Hazlo corto y directo para WhatsApp."""
-
+    for link in target:
+        furl=link if link.startswith("http") else "https://campus.cimac.jedu.pe"+link
         try:
-            resp = model.generate_content(prompt)
-            solucion = resp.text[:3000]
-            msg = f"📚 {tarea['curso']}\n🔴 {tarea['titulo']}\n{tarea['url']}\n\n🤖 GEMINI RESUELVE:\n{solucion}\n\n---"
-            enviar(msg)
-        except Exception as e:
-            enviar(f"📚 {tarea['curso']}\n{tarea['titulo']}\n{tarea['url']}\n\nNo pude resolver auto: {e}\nTexto: {contenido[:1000]}")
-else:
-    if not tareas_por_resolver:
-        enviar(f"✅ {ahora.strftime('%H:%M')} - Revisé {len(cursos_links)} cursos, no tienes tareas pendientes en NINGUNO. Todo al día.")
+            page=s.get(furl,timeout=20).text
+            sp=BeautifulSoup(page,'html.parser')
+            files=[a['href'] for a in sp.find_all('a',href=True) if 'forcedownload' in a['href'] or '.pdf' in a['href'].lower()]
+            if not files: files=[furl]
 
-print("Fin")
+            for fu in files[:2]:
+                u2=fu if fu.startswith("http") else "https://campus.cimac.jedu.pe"+fu
+                data=s.get(u2,timeout=30).content
+                texto=""
+                try:
+                    doc=fitz.open(stream=data, filetype="pdf")
+                    for p in doc: texto+=p.get_text()
+                except: texto=sp.get_text(" ")[:7000]
+
+                if len(texto)<50: continue
+                prompt=f"Eres alumno CIMAC Ciclo 2. Curso: {curso['name']} Seccion: {SECCION_Q} Titulo: {sp.find('h2').get_text() if sp.find('h2') else ''} Contenido: {texto[:6000]}. Dame resumen y solucion lista para entregar, formato WhatsApp corto."
+                sol=model.generate_content(prompt).text
+                wa(f"📚 {curso['name'][:60]}\n📂 {SECCION_Q.upper()}\n🔗 {u2}\n\n🤖 SOLUCION:\n{sol[:3500]}")
+        except Exception as e: print(e)
+
+wa("✅ Fin")
