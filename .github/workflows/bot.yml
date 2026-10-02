@@ -1,24 +1,20 @@
-name: CIMAC-Bot-Completo
+name: CIMAC-API-OFICIAL
 on:
   workflow_dispatch:
     inputs:
       curso:
-        description: 'Curso corto: base, web, hab, diseno, progra, ingles, soporte, tic'
-        required: true
-        default: 'tic'
-      seccion:
-        description: 'Seccion: recursos, tareas, practicas, silabo, todo'
-        required: true
-        default: 'tareas'
+        description: 'todo, tic, base, web, progra, etc'
+        default: 'todo'
+  schedule:
+    - cron: '0 13 * * *'
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: pip install requests beautifulsoup4 pytz PyMuPDF google-genai
+        with: { python-version: '3.11' }
+      - run: pip install requests PyMuPDF google-genai openpyxl pandas python-docx
       - run: python bot.py
         env:
           CIMAC_USER: ${{ secrets.CIMAC_USER }}
@@ -26,5 +22,4 @@ jobs:
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN }}
           ID_INSTANCE: ${{ secrets.ID_INSTANCE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CURSO_BUSCAR: ${{ inputs.curso }}
-          SECCION_BUSCAR: ${{ inputs.seccion }}
+          CURSO_BUSCAR: ${{ inputs.curso || 'todo' }}
