@@ -9,34 +9,20 @@ CURSO_Q=os.getenv("CURSO_BUSCAR","todo").lower().strip()
 SECCION_Q=os.getenv("SECCION_BUSCAR","todo").lower().strip()
 MI="51921493279@c.us"
 
-MAPA = {
-    "base": "base de datos", "datos": "base de datos", "sql": "base de datos",
-    "web": "entornos web", "html": "entornos web",
-    "hab": "habilidades", "actitudes": "habilidades",
-    "diseno": "grafico", "diseño": "grafico", "ilustrator": "grafico", "publicitario": "grafico",
-    "progra": "programacion", "algoritmia": "programacion", "fundamentos": "programacion",
-    "ingles": "idiomas", "idioma": "idiomas", "english": "idiomas",
-    "soporte": "soporte", "organizacion": "soporte", "administracion": "soporte",
-    "tic": "tecnologias", "excel": "tecnologias", "informacion": "tecnologias", "3383": "3383"
-}
+MAPA = {"base":"base de datos","web":"entornos web","hab":"habilidades","diseno":"grafico","diseño":"grafico","progra":"programacion","ingles":"idiomas","soporte":"soporte","tic":"tecnologias","tecnologia":"tecnologias","3383":"tecnologias"}
 for k,v in MAPA.items():
-    if k in CURSO_Q:
-        CURSO_Q = v
-        break
+    if k in CURSO_Q: CURSO_Q=v; break
 
 genai.configure(api_key=GEMINI)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 def wa(msg):
     url=f"https://api.greenapi.com/waInstance{ID}/sendMessage/{TOKEN}"
-    try:
-        for i in range(0,len(msg),3500):
-            requests.post(url, json={"chatId":MI,"message":msg[i:i+3500]}, timeout=25)
-    except Exception as e: print(e)
+    for i in range(0,len(msg),3500):
+        requests.post(url, json={"chatId":MI,"message":msg[i:i+3500]}, timeout=20)
 
 s=requests.Session()
 s.headers.update({"User-Agent":"Mozilla/5.0"})
-# LOGIN
 lp=s.get("https://campus.cimac.jedu.pe/login/index.php",timeout=30)
 soup=BeautifulSoup(lp.text,'html.parser')
 lt=soup.find('input',{'name':'logintoken'})
@@ -44,81 +30,72 @@ data={"username":USER,"password":PASS}
 if lt: data["logintoken"]=lt['value']
 s.post("https://campus.cimac.jedu.pe/login/index.php",data=data,timeout=30)
 
-# 1. SACA TUS 8 CURSOS REALES
-html_my = s.get("https://campus.cimac.jedu.pe/my/", timeout=30).text
-cursos_ids = list(set(re.findall(r'course/view\.php\?id=(\d+)', html_my)))
-print(f"IDs encontrados: {cursos_ids}")
-
+# SACA CURSOS
+my_html=s.get("https://campus.cimac.jedu.pe/my/",timeout=30).text
+ids=list(set(re.findall(r'course/view\.php\?id=(\d+)',my_html)))
 cursos=[]
-for cid in cursos_ids:
+for cid in ids:
     try:
-        url=f"https://campus.cimac.jedu.pe/course/view.php?id={cid}"
-        ch=s.get(url,timeout=20).text
-        title = BeautifulSoup(ch,'html.parser').title.get_text(strip=True).lower() if BeautifulSoup(ch,'html.parser').title else ""
-        cursos.append({"id":cid,"url":url,"name":title,"html":ch})
+        ch=s.get(f"https://campus.cimac.jedu.pe/course/view.php?id={cid}",timeout=20).text
+        name=BeautifulSoup(ch,'html.parser').title.get_text(strip=True).lower()
+        cursos.append({"id":cid,"name":name})
     except: pass
 
-print(f"Total cursos cargados: {len(cursos)}")
-for c in cursos: print(c['id'], c['name'][:60])
+filtrados = cursos if CURSO_Q=="todo" else [c for c in cursos if CURSO_Q in c['name'] or CURSO_Q in c['id']]
+wa(f"🔍 Buscando: {CURSO_Q.upper()} / {SECCION_Q.upper()}\nCursos: {len(filtrados)} -> {[c['name'][:40] for c in filtrados]}")
 
-# 2. FILTRA
-if CURSO_Q=="todo":
-    filtrados=cursos
-else:
-    filtrados=[c for c in cursos if CURSO_Q in c['name'] or CURSO_Q in c['id']]
-    if not filtrados: # si escribiste mal, busca por mapa inverso
-        filtrados=[c for c in cursos if "tecnologias" in CURSO_Q and "tecnologias" in c['name']]
-
-if not filtrados:
-    wa(f"⚠️ No encontre curso '{CURSO_Q}'. Tus cursos son:\n" + "\n".join([f"{c['id']} - {c['name'][:50]}" for c in cursos]))
-    exit()
-
-wa(f"🔍 Buscando: {CURSO_Q.upper()} / {SECCION_Q.upper()}\nCursos encontrados: {len(filtrados)} -> {[c['name'][:40] for c in filtrados]}")
-
-# 3. BUSCA TAREAS Y RECURSOS - METODO DIRECTO
 for curso in filtrados:
-    html=curso['html']
-    # Todos los links de tareas y recursos
-    tareas_links = list(set(re.findall(r'https://campus\.cimac\.jedu\.pe/mod/assign/view\.php\?id=\d+', html)))
-    recursos_links = list(set(re.findall(r'https://campus\.cimac\.jedu\.pe/mod/resource/view\.php\?id=\d+', html)))
+    # METODO QUE SI FUNCIONA EN MOODLE: /mod/assign/index.php?id=
+    try:
+        url_assign = f"https://campus.cimac.jedu.pe/mod/assign/index.php?id={curso['id']}"
+        html_assign = s.get(url_assign,timeout=25).text
+        soup_a = BeautifulSoup(html_assign,'html.parser')
+        # Busca todas las tareas en la tabla
+        links = []
+        for a in soup_a.find_all('a', href=True):
+            if 'mod/assign/view.php?id=' in a['href']:
+                links.append(a['href'])
+        links=list(set(links))
 
-    if "tarea" in SECCION_Q: links=tareas_links
-    elif "recurso" in SECCION_Q: links=recursos_links
-    else: links=tareas_links+recursos_links
+        if not links and "tarea" in SECCION_Q:
+            wa(f"⚠️ {curso['name'][:70]}\nEntré a {url_assign} y no hay tareas listadas. Puede que estén como 'Tarea CLS2' en recursos. Prueba con 'todo' o 'recursos'")
+            continue
 
-    if not links:
-        wa(f"⚠️ Curso: {curso['name'][:70]}\nNo hay links de '{SECCION_Q}'. Tareas encontradas: {len(tareas_links)} Recursos: {len(recursos_links)}")
-        continue
+        # Si pide recursos, tambien saca recursos
+        if SECCION_Q in ["recursos","todo"]:
+            url_res = f"https://campus.cimac.jedu.pe/course/view.php?id={curso['id']}"
+            html_c = s.get(url_res,timeout=20).text
+            for a in BeautifulSoup(html_c,'html.parser').find_all('a', href=True):
+                if 'mod/resource/view.php' in a['href']:
+                    links.append(a['href'])
 
-    wa(f"📚 {curso['name'][:70]}\nEncontré {len(links)} archivos de {SECCION_Q}, descargando...")
+        links=list(set(links))
+        wa(f"📚 {curso['name'][:70]}\nEncontré {len(links)} tareas/recursos. Resolviendo...")
 
-    for link in links[:5]: # max 5 por corrida
-        try:
-            page=s.get(link,timeout=20).text
+        for link in links[:5]:
+            furl=link if link.startswith("http") else "https://campus.cimac.jedu.pe"+link
+            page=s.get(furl,timeout=20).text
             sp=BeautifulSoup(page,'html.parser')
-            titulo=sp.find('h2').get_text(strip=True) if sp.find('h2') else link
+            titulo=sp.find('h2').get_text(strip=True) if sp.find('h2') else furl
 
-            # Busca PDFs dentro
-            files=[a['href'] for a in sp.find_all('a',href=True) if 'forcedownload=1' in a['href'] or '.pdf' in a['href'].lower()]
-            if not files: files=[link]
+            # Descarga PDF
+            files=[a['href'] for a in sp.find_all('a',href=True) if 'forcedownload' in a['href'] or '.pdf' in a['href'].lower()]
+            if not files: files=[furl]
 
             for fu in files[:2]:
                 u2=fu if fu.startswith("http") else "https://campus.cimac.jedu.pe"+fu
+                data=s.get(u2,timeout=30).content
+                texto=""
                 try:
-                    data=s.get(u2,timeout=30).content
-                    texto=""
-                    try:
-                        doc=fitz.open(stream=data, filetype="pdf")
-                        for p in doc: texto+=p.get_text()
-                    except:
-                        texto=sp.get_text(" ",strip=True)[:8000]
-
-                    if len(texto)<30: continue
-
-                    prompt=f"Curso CIMAC: {curso['name']} Tarea: {titulo} Contenido: {texto[:6000]}. Responde corto para WhatsApp: que pide y solucion lista para copiar."
-                    sol=model.generate_content(prompt).text
-                    wa(f"📚 {curso['name'][:60]}\n📝 {titulo}\n🔗 {u2}\n\n🤖 SOLUCION:\n{sol[:3500]}")
-                except Exception as e: print(f"Error archivo {e}")
-        except Exception as e: print(f"Error link {e}")
+                    doc=fitz.open(stream=data,filetype="pdf")
+                    for p in doc: texto+=p.get_text()
+                except:
+                    texto=sp.get_text(" ",strip=True)[:8000]
+                if len(texto)<30: continue
+                prompt=f"Curso {curso['name']} Tarea {titulo} Contenido: {texto[:6000]}. Dame que pide y solucion lista para copiar, corto para WhatsApp."
+                sol=model.generate_content(prompt).text
+                wa(f"📚 {curso['name'][:60]}\n📝 {titulo}\n🔗 {u2}\n\n🤖 SOLUCION:\n{sol[:3500]}")
+    except Exception as e:
+        wa(f"Error en {curso['name']}: {e}")
 
 wa("✅ Fin")
