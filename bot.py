@@ -1,7 +1,6 @@
 import os, requests, re
 from bs4 import BeautifulSoup
 import fitz
-# NUEVA LIBRERIA 2026
 from google import genai
 
 USER=os.getenv("CIMAC_USER"); PASS=os.getenv("CIMAC_PASS")
@@ -18,20 +17,20 @@ for k,v in MAPA.items():
 client = genai.Client(api_key=GEMINI)
 
 def generar(prompt):
-    # Prueba con los modelos nuevos en orden
-    for modelo in ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-2.0-flash-lite"]:
+    for modelo in ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview"]:
         try:
             resp = client.models.generate_content(model=modelo, contents=prompt)
             return resp.text
         except Exception as e:
             print(f"Fallo {modelo}: {e}")
             continue
-    return "No se pudo generar, pero el PDF fue descargado."
+    return "PDF descargado, revisalo manual."
 
 def wa(msg):
     url=f"https://api.greenapi.com/waInstance{ID}/sendMessage/{TOKEN}"
     for i in range(0,len(msg),3500):
-        try: requests.post(url, json={"chatId":MI,"message":msg[i:i+3500]}, timeout=20)
+        try:
+            requests.post(url, json={"chatId":MI,"message":msg[i:i+3500]}, timeout=20)
         except: pass
 
 s=requests.Session()
@@ -54,7 +53,7 @@ for cid in ids:
     except: pass
 
 filtrados = cursos if CURSO_Q=="todo" else [c for c in cursos if CURSO_Q in c['name']]
-wa(f"🔍 Buscando: {CURSO_Q.upper()} / {SECCION_Q.upper()}\nCursos: {len(filtrados)}")
+wa(f"Buscando: {CURSO_Q.upper()} / {SECCION_Q.upper()} Cursos: {len(filtrados)}")
 
 for curso in filtrados:
     try:
@@ -62,15 +61,12 @@ for curso in filtrados:
         html_assign = s.get(url_assign,timeout=25).text
         soup_a = BeautifulSoup(html_assign,'html.parser')
         links = list(set([a['href'] for a in soup_a.find_all('a', href=True) if 'mod/assign/view.php?id=' in a['href']]))
-
         if SECCION_Q in ["recursos","todo","recursos de clases"]:
             html_c = s.get(f"https://campus.cimac.jedu.pe/course/view.php?id={curso['id']}",timeout=20).text
             for a in BeautifulSoup(html_c,'html.parser').find_all('a', href=True):
                 if 'mod/resource/view.php' in a['href']: links.append(a['href'])
         links=list(set(links))
-
-        wa(f"📚 {curso['name'][:70]}\nEncontré {len(links)} tareas/recursos. Resolviendo...")
-
+        wa(f"Curso: {curso['name'][:70]} Encontre {len(links)} archivos. Resolviendo...")
         for link in links[:5]:
             furl=link if link.startswith("http") else "https://campus.cimac.jedu.pe"+link
             page=s.get(furl,timeout=20).text
@@ -89,6 +85,7 @@ for curso in filtrados:
                 if len(texto)<30: continue
                 prompt=f"Curso {curso['name']} Tarea {titulo} Contenido: {texto[:6000]}. Dame resumen y solucion lista para copiar, corto WhatsApp."
                 sol=generar(prompt)
-                wa(f"📚 {curso['name'][:60]}\n📝 {titulo}\n🔗 {u2}\n\n🤖 SOLUCION:\n{sol[:3500]}")
+                wa(f"{curso['name'][:60]} | {titulo} | {u2} SOLUCION: {sol[:3500]}")
     except Exception as e: wa(f"Error en {curso['name']}: {e}")
-wa("✅ Fin"
+
+wa("Fin")
