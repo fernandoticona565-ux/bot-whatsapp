@@ -1,21 +1,30 @@
-name: Bot CIMAC 24/7
+name: CIMAC-Bot-Completo
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '*/30 * * * *'
+    inputs:
+      curso:
+        description: 'Curso corto: base, web, hab, diseno, progra, ingles, soporte, tic'
+        required: true
+        default: 'tic'
+      seccion:
+        description: 'Seccion: recursos, tareas, practicas, silabo, todo'
+        required: true
+        default: 'tareas'
 jobs:
-  run-bot:
+  run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests beautifulsoup4 PyPDF2 python-docx openpyxl pytz Pillow
+      - run: pip install requests beautifulsoup4 pytz PyMuPDF google-generativeai
       - run: python bot.py
         env:
           CIMAC_USER: ${{ secrets.CIMAC_USER }}
           CIMAC_PASS: ${{ secrets.CIMAC_PASS }}
-          ID_INSTANCE: ${{ secrets.ID_INSTANCE }}
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN }}
+          ID_INSTANCE: ${{ secrets.ID_INSTANCE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CURSO_BUSCAR: ${{ inputs.curso }}
+          SECCION_BUSCAR: ${{ inputs.seccion }}
