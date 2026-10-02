@@ -14,7 +14,7 @@ for k,v in MAPA.items():
     if k in CURSO_Q: CURSO_Q=v; break
 
 genai.configure(api_key=GEMINI)
-model = genai.GenerativeModel("gemini-1.5-flash-latest")
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 def wa(msg):
     url=f"https://api.greenapi.com/waInstance{ID}/sendMessage/{TOKEN}"
